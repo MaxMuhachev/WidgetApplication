@@ -1,12 +1,12 @@
 package com.maxim.widgets.models;
 
-import com.maxim.widgets.models.contract.RateLimiter;
+import com.maxim.widgets.models.contract.RateLimiterInterface;
 
 import java.util.Date;
 import java.util.concurrent.TimeUnit;
 
 
-public class WidgetRateLimit implements RateLimiter {
+public class WidgetRateLimit implements RateLimiterInterface {
     private long lastTimerReset = System.currentTimeMillis();
 
     private long max = 0;
@@ -31,10 +31,10 @@ public class WidgetRateLimit implements RateLimiter {
 
     public boolean allowNextEvent() {
         resetTimer();
-        return ++counter <= max;
+        return counter <= max;
     }
 
-    public long countOfRemaining() {
+    public long getCountOfRemaining() {
         return  max - counter;
     }
 

@@ -8,7 +8,6 @@ import com.maxim.widgets.cache.RateLimitCacheManager;
 import com.maxim.widgets.enums.SectionOfRateLimit;
 import com.maxim.widgets.models.Widget;
 import com.maxim.widgets.models.WidgetRateLimit;
-import com.maxim.widgets.services.WidgetService;
 import com.maxim.widgets.testdatafactories.WidgetTestDataFactory;
 import org.junit.Before;
 import org.junit.Test;
@@ -23,18 +22,14 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
-import javax.servlet.http.HttpServletResponse;
-import java.lang.reflect.Array;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
-import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
 @RunWith(SpringJUnit4ClassRunner.class)
 @SpringBootTest(classes = {WidgetApplication.class})
@@ -42,21 +37,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 public class WidgetControllerIntegrationTest {
 
     @Autowired
-    private WidgetController widgetController;
-
-    @Autowired
     private WebApplicationContext wac;
 
     @Autowired
-    public MockMvc mockMvc;
+    private MockMvc mockMvc;
 
     private final String BASE_URL = "/api/widgets";
 
+    private final WidgetRateLimit rateLimitAll = new WidgetRateLimit(0, 1000);
+
     @Before
     public void setup() {
+        RateLimitCacheManager.getInstance().put(SectionOfRateLimit.ALL, rateLimitAll);
         MockitoAnnotations.initMocks(this);
-        RateLimitCacheManager rateLimitCacheManager = RateLimitCacheManager.getInstance();
-        rateLimitCacheManager.put(SectionOfRateLimit.ALL, new WidgetRateLimit(0, 1000));
         this.mockMvc = MockMvcBuilders.webAppContextSetup(this.wac).build();
     }
 
@@ -75,7 +68,9 @@ public class WidgetControllerIntegrationTest {
                 .andExpect(jsonPath("$.y").value(validWidget.getY()))
                 .andExpect(jsonPath("$.z").value(validWidget.getZ()))
                 .andExpect(jsonPath("$.width").value(validWidget.getWidth()))
-                .andExpect(jsonPath("$.height").value(validWidget.getHeight()));
+                .andExpect(jsonPath("$.height").value(validWidget.getHeight()))
+                .andExpect(header().string("X-RateLimit-Limit", rateLimitAll.getMaxRate().toString()))
+                .andExpect(header().string("X-Rate-Limit-Remaining", String.valueOf(rateLimitAll.getCountOfRemaining() - 1)));
         Widget validWidgetZIndexLess = WidgetTestDataFactory.getValidZIndexLess();
         this.mockMvc.perform(post(BASE_URL)
                 .param("x", validWidgetZIndexLess.getX().toString())
@@ -89,16 +84,36 @@ public class WidgetControllerIntegrationTest {
                 .andExpect(jsonPath("$.y").value(validWidgetZIndexLess.getY()))
                 .andExpect(jsonPath("$.z").value(validWidgetZIndexLess.getZ()))
                 .andExpect(jsonPath("$.width").value(validWidgetZIndexLess.getWidth()))
-                .andExpect(jsonPath("$.height").value(validWidgetZIndexLess.getHeight()));
+                .andExpect(jsonPath("$.height").value(validWidgetZIndexLess.getHeight()))
+                .andExpect(header().string("X-RateLimit-Limit", rateLimitAll.getMaxRate().toString()))
+                .andExpect(header().string("X-Rate-Limit-Remaining", String.valueOf(rateLimitAll.getCountOfRemaining())));
+
+        List<Widget> widgetsInStorage = CacheManager.getInstance().getAllValues();
+        ObjectWriter ow = new ObjectMapper().writer().withDefaultPrettyPrinter();
+        List<Widget> widgetListExpected = new ArrayList<>();
+
+        validWidgetZIndexLess.setId(widgetsInStorage.get(0).getId());
+        validWidgetZIndexLess.setLastModifiedDate(widgetsInStorage.get(0).getLastModifiedDate());
+        widgetListExpected.add(validWidgetZIndexLess);
+        validWidget.setId(widgetsInStorage.get(1).getId());
+        validWidget.setLastModifiedDate(widgetsInStorage.get(1).getLastModifiedDate());
+        widgetListExpected.add(validWidget);
+
+        String jsonExpected = ow.writeValueAsString(widgetListExpected);
 
         this.mockMvc.perform(get(BASE_URL + "/getAll")
             ).andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.*", hasSize(2)));
+                .andExpect(content().json(jsonExpected))
+                .andExpect(header().string("X-RateLimit-Limit", rateLimitAll.getMaxRate().toString()))
+                .andExpect(header().string("X-Rate-Limit-Remaining", String.valueOf(rateLimitAll.getCountOfRemaining())));
     }
 
     @Test
     public void getByWidgetId() throws Exception {
+        WidgetRateLimit rateLimitById = new WidgetRateLimit(0, 10);
+        RateLimitCacheManager.getInstance().put(SectionOfRateLimit.GET_BY_WIDGET_ID, rateLimitById);
+
         Widget validWidget = WidgetTestDataFactory.getValid();
         CacheManager.getInstance().put(validWidget.getId(), validWidget);
         this.mockMvc.perform(get(BASE_URL + "/getById")
@@ -109,7 +124,9 @@ public class WidgetControllerIntegrationTest {
                 .andExpect(jsonPath("$.y").value(validWidget.getY()))
                 .andExpect(jsonPath("$.z").value(validWidget.getZ()))
                 .andExpect(jsonPath("$.width").value(validWidget.getWidth()))
-                .andExpect(jsonPath("$.height").value(validWidget.getHeight()));
+                .andExpect(jsonPath("$.height").value(validWidget.getHeight()))
+                .andExpect(header().string("X-RateLimit-Limit", rateLimitById.getMaxRate().toString()))
+                .andExpect(header().string("X-Rate-Limit-Remaining", String.valueOf(rateLimitById.getCountOfRemaining() - 1)));
     }
 
     @Test
@@ -121,6 +138,9 @@ public class WidgetControllerIntegrationTest {
 
     @Test
     public void getAllByRangeWidgetsFoundTwo() throws Exception {
+        WidgetRateLimit rateLimitByRange = new WidgetRateLimit(0, 1);
+        RateLimitCacheManager.getInstance().put(SectionOfRateLimit.GET_ALL_WIDGETS_BY_RANGE, rateLimitByRange);
+
         Widget validWidget = WidgetTestDataFactory.getValid();
         Widget validWidgetZIndexLess = WidgetTestDataFactory.getValidZIndexLess();
         Widget validWidgetValidZIndexHundredXY = WidgetTestDataFactory.getValidZIndexHundredXY();
@@ -145,7 +165,9 @@ public class WidgetControllerIntegrationTest {
                 .param("highY", "150")
         ).andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(content().json(jsonExpected));
+                .andExpect(content().json(jsonExpected))
+                .andExpect(header().string("X-RateLimit-Limit", rateLimitByRange.getMaxRate().toString()))
+                .andExpect(header().string("X-Rate-Limit-Remaining", String.valueOf(rateLimitByRange.getCountOfRemaining() - 1)));
     }
 
     @Test
@@ -169,6 +191,8 @@ public class WidgetControllerIntegrationTest {
                 .param("highY", "-150")
         ).andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(content().json(jsonExpected));
+                .andExpect(content().json(jsonExpected))
+                .andExpect(header().string("X-RateLimit-Limit", rateLimitAll.getMaxRate().toString()))
+                .andExpect(header().string("X-Rate-Limit-Remaining", String.valueOf(rateLimitAll.getCountOfRemaining() - 1)));
     }
 }

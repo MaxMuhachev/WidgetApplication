@@ -1,7 +1,7 @@
 package com.maxim.widgets.models.contract;
 
 
-public interface RateLimiter {
+public interface RateLimiterInterface {
     public void setLimit(long count, long maxEvents);
 
     public boolean allowNextEvent();

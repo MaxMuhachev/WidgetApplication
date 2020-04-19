@@ -11,7 +11,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import javax.servlet.http.HttpServletResponse;
-import java.util.*;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -26,8 +28,9 @@ public class WidgetService {
         if (widgetRateLimit == null) {
             widgetRateLimit = rateLimitService.getByName(SectionOfRateLimit.ALL);
         }
+        widgetRateLimit.nextEvent();
         response.addHeader("X-RateLimit-Limit", String.valueOf(widgetRateLimit.getMaxRate()));
-        response.addHeader("X-Rate-Limit-Remaining", String.valueOf(widgetRateLimit.countOfRemaining()));
+        response.addHeader("X-Rate-Limit-Remaining", String.valueOf(widgetRateLimit.getCountOfRemaining()));
         response.addHeader("X-Rate-Limit-Reset", widgetRateLimit.getTimeWhenReset().toString());
         if (!widgetRateLimit.allowNextEvent()) {
             throw new ResponseStatusException(
@@ -45,8 +48,8 @@ public class WidgetService {
     ) {
         seHeaderRateLimit(response, SectionOfRateLimit.CREATE_WIDGET);
         Widget widget = new Widget(x, y, z, width, height);
-        Map<Long, Widget> twoPartCache = new LinkedHashMap<>();
-        twoPartCache.put(widget.getId(), widget);
+        Map<Long, Widget> secondPartCache = new LinkedHashMap<>();
+        secondPartCache.put(widget.getId(), widget);
         boolean insertInc = false;
         // Copy two part of map
         for (Map.Entry<Long, Widget> map : cacheManager.getSetOfMap()) {
@@ -57,11 +60,11 @@ public class WidgetService {
                 if (insertInc) {
                     map.getValue().setZ(map.getValue().getZ() + 1);
                 }
-                twoPartCache.put(map.getKey(), map.getValue());
+                secondPartCache.put(map.getKey(), map.getValue());
             }
         }
         // Put two part
-        twoPartCache.forEach(
+        secondPartCache.forEach(
                 (key, value) -> {
                     cacheManager.clear(key);
                     cacheManager.put(key, value);

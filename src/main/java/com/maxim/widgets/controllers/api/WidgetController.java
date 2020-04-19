@@ -1,8 +1,7 @@
 package com.maxim.widgets.controllers.api;
 
-import com.maxim.widgets.models.Widget;
 import com.maxim.widgets.cache.CacheManager;
-import com.maxim.widgets.services.RateLimitService;
+import com.maxim.widgets.models.Widget;
 import com.maxim.widgets.services.WidgetService;
 import com.maxim.widgets.utils.WidgetUtil;
 import io.swagger.annotations.Api;
@@ -39,7 +38,6 @@ public class WidgetController {
                     Integer height,
             HttpServletResponse response
     ) {
-
         if (WidgetUtil.isNotNullOrZeroAttributes(x, y, width, height)) {
             return  widgetService.create(x, y, z, width, height, response);
         }
